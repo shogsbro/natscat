@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,6 +19,7 @@ import (
 )
 
 var (
+	appName   = "natscat"
 	listen    bool
 	verbose   bool
 	buffered  bool
@@ -37,12 +39,13 @@ func cmdLine(c *cli.Context) error {
 	}
 
 	if subject == "" {
-		log.Fatal("Must specify subject string")
+		cli.ShowCommandHelp(c, "")
+		log.Fatalf("%s: Must specify subject string\n", appName)
 	}
 
 	if !listen {
 		if strings.IndexAny(subject, "*>") >= 0 {
-			log.Fatal("Cannot specify wildcard subject when publishing")
+			log.Fatalf("%s: Cannot specify wildcard subject when publishing\n", appName)
 		}
 	}
 
@@ -56,14 +59,14 @@ func cat() {
 	}
 	defer nc.Close()
 	if verbose {
-		log.Println("Connected to", nc.ConnectedUrl())
+		log.Printf("%s: Connected to %s\n", appName, nc.ConnectedUrl())
 	}
 
 	switch {
 	case listen:
 		// Listening for messages
 		if verbose {
-			log.Printf("Listening on [%s], buffered %v\n", subject, buffered)
+			log.Printf("%s: Listening on [%s], buffered %v\n", appName, subject, buffered)
 		}
 		nc.Subscribe(subject, func(m *nats.Msg) {
 			if verbose {
@@ -85,7 +88,7 @@ func cat() {
 		// Publish specified message
 		nc.Publish(subject, []byte(message))
 		if verbose {
-			log.Printf("[%s] Wrote '%s'", subject, message)
+			log.Printf("%s: [%s] Wrote '%s'\n", appName, subject, message)
 		}
 
 	case message == "":
@@ -99,14 +102,14 @@ func cat() {
 				count++
 			}
 			if verbose {
-				log.Printf("[%s] Wrote %d lines", subject, count)
+				log.Printf("%s: [%s] Wrote %d lines\n", appName, subject, count)
 			}
 		} else {
 			bytes, _ := ioutil.ReadAll(os.Stdin)
 			count = len(bytes)
 			nc.Publish(subject, bytes)
 			if verbose {
-				log.Printf("[%s] Wrote %d bytes", subject, count)
+				log.Printf("%s: [%s] Wrote %d bytes\n", appName, subject, count)
 			}
 		}
 	}
@@ -114,9 +117,6 @@ func cat() {
 	if err := nc.LastError(); err != nil {
 		log.Fatal(err)
 	}
-
-	//	reader := bufio.NewReader(os.Stdin)
-	//	fmt.Println(reader.ReadLine())
 }
 
 func main() {
@@ -127,19 +127,32 @@ func main() {
 		Name:  "version, V",
 		Usage: "print the version",
 	}
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Printf("%s: version %s\n", c.App.Name, c.App.Version)
+		os.Exit(1)
+	}
+	hp := cli.HelpPrinter
+	cli.HelpPrinter = func(w io.Writer, templ string, data interface{}) {
+		hp(w, templ, data)
+		os.Exit(1)
+	}
+
 	app := cli.NewApp()
+	app.Name = appName
 	app.Usage = "cat to/from NATS subject"
-	app.UsageText = "natscats [global options] topic [message to post (buffered mode)]"
-	app.Version = "0.1"
+	app.UsageText = "natscats [global options] topic [message to post]"
+	app.Author = "Sigurd Høgsbro"
+	app.Email = "shogsbro@gmail.com"
+	app.Version = "0.2"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
 			Name:        "buffered, b",
-			Usage:       "Read/write messages in buffered mode, terminated by CR/LF",
+			Usage:       "read/write messages in buffered mode, terminated by CR/LF",
 			Destination: &buffered,
 		},
 		cli.StringFlag{
 			Name:        "message, m",
-			Usage:       "Write message",
+			Usage:       "message to publish",
 			Value:       "",
 			Destination: &message,
 		},
@@ -150,13 +163,13 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:        "listen, l",
-			Usage:       "listen for messages on NATS subject",
+			Usage:       "listen for messages",
 			Destination: &listen,
 		},
 		cli.StringFlag{
 			Name:        "subject, s",
 			Value:       "",
-			Usage:       "NATS subject (* and > wildcards only valid when listening)",
+			Usage:       "[Required] NATS subject ('*' and '>' wildcards only valid when listening)",
 			Destination: &subject,
 		},
 		cli.StringFlag{
