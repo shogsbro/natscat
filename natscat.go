@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nats-io/go-nats"
 	"github.com/urfave/cli"
@@ -34,7 +35,7 @@ func cmdLine(c *cli.Context) error {
 	buffered = c.Bool("buffered")
 
 	if !listen && c.NArg() > 0 {
-		message = strings.Join(c.Args()[0:], " ")
+		message = strings.Join(c.Args().Slice(), " ")
 		buffered = true
 	}
 
@@ -123,7 +124,7 @@ func main() {
 	// Log to stderr without timestamp
 	log.SetFlags(0)
 
-	cli.VersionFlag = cli.BoolFlag{
+	cli.VersionFlag = &cli.BoolFlag{
 		Name:  "version, V",
 		Usage: "print the version",
 	}
@@ -137,51 +138,61 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := cli.NewApp()
-	app.Name = appName
-	app.Usage = "cat to/from NATS subject"
-	app.UsageText = "natscats [global options] topic [message to post]"
-	app.Author = "Sigurd Høgsbro"
-	app.Email = "shogsbro@gmail.com"
-	app.Version = "0.2"
-	app.Flags = []cli.Flag{
-		cli.BoolFlag{
-			Name:        "buffered, b",
-			Usage:       "read/write messages in buffered mode, terminated by CR/LF",
-			Destination: &buffered,
+	app := &cli.App{
+		Name:      appName,
+		Usage:     "cat to/from NATS subject",
+		UsageText: "natscats [global options] topic [message to post]",
+		Compiled:  time.Now(),
+		Authors: []*cli.Author{
+			&cli.Author{
+				Name:  "Sigurd Høgsbro",
+				Email: "shogsbro@gmail.com",
+			},
 		},
-		cli.StringFlag{
-			Name:        "message, m",
-			Usage:       "message to publish",
-			Value:       "",
-			Destination: &message,
-		},
-		cli.BoolFlag{
-			Name:        "verbose, v",
-			Usage:       "verbose logging",
-			Destination: &verbose,
-		},
-		cli.BoolFlag{
-			Name:        "listen, l",
-			Usage:       "listen for messages",
-			Destination: &listen,
-		},
-		cli.StringFlag{
-			Name:        "subject, s",
-			Value:       "",
-			Usage:       "[Required] NATS subject ('*' and '>' wildcards only valid when listening)",
-			Destination: &subject,
-		},
-		cli.StringFlag{
-			Name:        "server, S",
-			Value:       nats.DefaultURL,
-			Usage:       "NATS server URL(s), comma-separated",
-			EnvVar:      "NATS",
-			Destination: &serverURL,
+		Version: "0.2",
+		Action:  cmdLine,
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:        "buffered, b",
+				Usage:       "read/write messages in buffered mode, terminated by CR/LF",
+				Destination: &buffered,
+			},
+			&cli.StringFlag{
+				Name:        "message, m",
+				Usage:       "message to publish",
+				Value:       "",
+				Destination: &message,
+			},
+			&cli.BoolFlag{
+				Name:        "verbose, v",
+				Usage:       "verbose logging",
+				Destination: &verbose,
+			},
+			&cli.BoolFlag{
+				Name:        "listen, l",
+				Usage:       "listen for messages",
+				Destination: &listen,
+			},
+			&cli.StringFlag{
+				Name:        "subject, s",
+				Value:       "",
+				Usage:       "[Required] NATS subject ('*' and '>' wildcards only valid when listening)",
+				Destination: &subject,
+			},
+			&cli.StringFlag{
+				Name:        "server, S",
+				Value:       nats.DefaultURL,
+				Usage:       "NATS server URL(s), comma-separated",
+				EnvVars:     []string{"NATS"},
+				Destination: &serverURL,
+			},
 		},
 	}
-	app.Action = cmdLine
-	app.Run(os.Args)
+
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	cat()
 }
